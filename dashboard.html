@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Load Shedding Optimizer</title>
+<style>
+  :root {
+    --bg-primary:    #0f1724;
+    --bg-card:       #1a2332;
+    --bg-elevated:   #243144;
+    --text-primary:  #e8ecef;
+    --text-muted:    #8b95a7;
+    --accent:        #4a9eff;
+    --accent-dark:   #2d7dd2;
+    --success:       #2ecc71;
+    --danger:        #e74c3c;
+    --warning:       #f39c12;
+    --border:        #2d3a4f;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    min-height: 100vh;
+    padding: 24px;
+  }
+  .container { max-width: 1200px; margin: 0 auto; }
+  header { margin-bottom: 32px; }
+  h1 { color: var(--accent); font-size: 28px; font-weight: 600; }
+  .subtitle { color: var(--text-muted); font-size: 14px; margin-top: 4px; }
+
+  .tabs { display: flex; border-bottom: 2px solid var(--border); margin-bottom: 24px; }
+  .tab {
+    padding: 12px 24px; background: transparent; border: none;
+    color: var(--text-muted); cursor: pointer; font-size: 14px; font-weight: 500;
+    border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.2s;
+  }
+  .tab:hover { color: var(--text-primary); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  .card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 8px; padding: 24px; margin-bottom: 16px;
+  }
+  .card h2 { font-size: 16px; font-weight: 600; margin-bottom: 16px; color: var(--text-primary); }
+  .card p { color: var(--text-muted); font-size: 13px; margin-bottom: 12px; line-height: 1.5; }
+  .card code {
+    background: var(--bg-elevated); padding: 2px 6px;
+    border-radius: 3px; color: var(--accent); font-size: 12px;
+  }
+
+  label { display: block; color: var(--text-muted); font-size: 13px; margin-bottom: 6px; }
+  select, input[type="text"], input[type="file"], input[type="number"] {
+    width: 100%; padding: 10px 12px; background: var(--bg-elevated);
+    border: 1px solid var(--border); border-radius: 4px; color: var(--text-primary);
+    font-size: 14px; margin-bottom: 16px;
+  }
+  select:focus, input:focus { outline: none; border-color: var(--accent); }
+
+  button {
+    background: var(--accent); color: white; border: none;
+    padding: 10px 24px; border-radius: 4px; cursor: pointer;
+    font-size: 14px; font-weight: 500; transition: background 0.2s;
+  }
+  button:hover:not(:disabled) { background: var(--accent-dark); }
+  button:disabled { background: #4a4a4a; cursor: not-allowed; }
+
+  .results { display: none; }
+  .results.visible { display: block; }
+  .metric-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+  .metric {
+    flex: 1; min-width: 140px; background: var(--bg-elevated);
+    padding: 12px 16px; border-radius: 6px; border-left: 3px solid var(--accent);
+  }
+  .metric-label { color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .metric-value { color: var(--text-primary); font-size: 22px; font-weight: 600; margin-top: 4px; }
+  .metric.success { border-left-color: var(--success); }
+  .metric.danger { border-left-color: var(--danger); }
+
+  .grid-wrapper { overflow-x: auto; margin-top: 16px; }
+  table.schedule { border-collapse: collapse; font-size: 12px; width: 100%; }
+  table.schedule th, table.schedule td {
+    border: 1px solid var(--border); text-align: center; padding: 6px 8px; min-width: 32px;
+  }
+  table.schedule th { background: var(--bg-elevated); color: var(--text-muted); font-weight: 500; }
+  table.schedule td.kept { background: rgba(46,204,113,0.15); color: var(--success); }
+  table.schedule td.cut { background: rgba(231,76,60,0.2); color: var(--danger); font-weight: 600; }
+  td.area-name {
+    background: var(--bg-elevated); color: var(--text-primary);
+    font-weight: 500; text-align: left; padding-left: 12px;
+  }
+
+  .config-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 12px; }
+  .config-table th, .config-table td {
+    border: 1px solid var(--border); padding: 8px 10px; text-align: left;
+  }
+  .config-table th { background: var(--bg-elevated); color: var(--text-muted); font-weight: 500; }
+  .config-table input {
+    width: 100%; padding: 4px 8px; background: var(--bg-card);
+    border: 1px solid var(--border); border-radius: 3px;
+    color: var(--text-primary); font-size: 12px; margin: 0;
+  }
+  .config-table input[type="checkbox"] {
+    width: auto; transform: scale(1.2); cursor: pointer;
+  }
+  .config-info {
+    background: rgba(74,158,255,0.1); border-left: 3px solid var(--accent);
+    padding: 10px 14px; border-radius: 4px; font-size: 12px;
+    color: var(--text-muted); margin-bottom: 12px;
+  }
+
+  .loading { display: none; text-align: center; padding: 32px; color: var(--text-muted); }
+  .loading.visible { display: block; }
+  .spinner {
+    display: inline-block; width: 28px; height: 28px;
+    border: 3px solid var(--border); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 12px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .error {
+    background: rgba(231,76,60,0.15); border-left: 3px solid var(--danger);
+    padding: 12px 16px; border-radius: 4px; margin-bottom: 16px;
+    color: #ff8a80; font-size: 13px;
+  }
+  .legend { display: flex; gap: 16px; margin-top: 12px; font-size: 12px; color: var(--text-muted); }
+  .legend-box {
+    display: inline-block; width: 12px; height: 12px;
+    border-radius: 2px; margin-right: 6px; vertical-align: middle;
+  }
+  .legend-kept { background: rgba(46,204,113,0.5); }
+  .legend-cut { background: rgba(231,76,60,0.6); }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>Load Shedding Optimizer</h1>
+    <div class="subtitle">PJM Interconnection · Hybrid optimization with  (Flow 1) and short-term forecaster (Flow 2)</div>
+  </header>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="flow1">Trained Model (5 areas)</button>
+    <button class="tab" data-tab="flow2">Upload Your CSV</button>
+  </div>
+
+  <!-- Flow 1 -->
+  <div id="flow1" class="tab-content">
+    <div class="card">
+      <h2>Run Hybrid + GBT Forecaster on any date</h2>
+      <p>Trained on 2004–2018 historical data. Supports dates from <code>2010-01-01</code> to <code>2024-12-31</code>. Forecasts for dates far beyond the training period are extrapolations and may be less reliable than recent historical predictions. For dates within the dataset (2010–2018), the schedule is scored against actual demand.</p>
+      <label for="date-input">Target date (YYYY-MM-DD)</label>
+      <input type="text" id="date-input" value="2011-07-21" placeholder="2011-07-21">
+      <button id="run-flow1">Run Hybrid + GBT Forecaster</button>
+    </div>
+    <div id="flow1-loading" class="loading">
+      <div class="spinner"></div>
+      <div>Running optimizer... this takes 30-60 seconds.</div>
+    </div>
+    <div id="flow1-results" class="results"></div>
+  </div>
+
+  <!-- Flow 2 -->
+  <div id="flow2" class="tab-content" style="display:none;">
+    <div class="card">
+      <h2>Upload your own demand CSV</h2>
+      <p>CSV columns: <code>area_id, datetime, demand_mw</code> OR <code>datetime, demand_mw</code> (single area).<br>
+         Datetime accepted: <code>YYYY-MM-DD HH:MM:SS</code> or <code>MM/DD/YYYY H:MM</code>. Tab- or comma-separated.</p>
+      <p>The system will use the past 14 days before your target date to build a short-term forecast (day-of-week × hour pattern with exponential smoothing and outlier capping). No training required.</p>
+      <label for="csv-upload">Demand CSV file</label>
+      <input type="file" id="csv-upload" accept=".csv,.tsv,.txt">
+      <button id="parse-csv">Parse CSV & Generate Config</button>
+    </div>
+
+    <div id="flow2-config" class="results">
+      <div class="card">
+        <h2>Auto-generated area configuration</h2>
+        <div class="config-info">
+          <strong>Defaults applied:</strong> capacity_mw = max observed × 1.10,
+          economic_weight = 0.5, priority_flag = no.
+          Edit any cell below if you know specific areas are critical.
+        </div>
+        <div id="config-table-wrapper"></div>
+
+        <label for="target-date" style="margin-top: 16px;">Target date for schedule (YYYY-MM-DD)</label>
+        <input type="text" id="target-date" placeholder="e.g. 2024-07-15">
+
+        <button id="run-flow2" style="margin-top: 8px;">Run Hybrid + Lite Forecast</button>
+      </div>
+    </div>
+
+    <div id="flow2-loading" class="loading">
+      <div class="spinner"></div>
+      <div>Running forecaster + optimizer...</div>
+    </div>
+    <div id="flow2-results" class="results"></div>
+  </div>
+</div>
+
+<script>
+// Tab switching
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    const id = t.dataset.tab;
+    document.getElementById('flow1').style.display = (id === 'flow1') ? 'block' : 'none';
+    document.getElementById('flow2').style.display = (id === 'flow2') ? 'block' : 'none';
+  });
+});
+
+// FLOW 1 — free-text date
+document.getElementById('run-flow1').addEventListener('click', async () => {
+  const date = document.getElementById('date-input').value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    alert('Please enter a date in YYYY-MM-DD format.');
+    return;
+  }
+  const btn = document.getElementById('run-flow1');
+  const loading = document.getElementById('flow1-loading');
+  const results = document.getElementById('flow1-results');
+
+  btn.disabled = true;
+  loading.classList.add('visible');
+  results.classList.remove('visible');
+  results.innerHTML = '';
+
+  try {
+    const res = await fetch('/api/run-flow1', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ date })
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error('Server error ' + res.status + ': ' + errText);
+    }
+    const data = await res.json();
+    renderResults(data, results, 'Hybrid + GBT');
+  } catch (e) {
+    results.innerHTML = `<div class="error">Failed: ${e.message}</div>`;
+    results.classList.add('visible');
+  } finally {
+    btn.disabled = false;
+    loading.classList.remove('visible');
+  }
+});
+
+// FLOW 2 — CSV upload
+let parsedCSV = null;
+
+document.getElementById('parse-csv').addEventListener('click', async () => {
+  const fileInput = document.getElementById('csv-upload');
+  if (!fileInput.files.length) {
+    alert('Please choose a CSV file first.');
+    return;
+  }
+  const file = fileInput.files[0];
+  const text = await file.text();
+
+  try {
+    const parsed = parseCSV(text, file.name);
+    parsedCSV = parsed;
+    console.log('Parsed CSV: areas=', parsed.areas, 'rows=', parsed.row_count);
+    renderConfigTable(parsed);
+    document.getElementById('flow2-config').classList.add('visible');
+
+    if (parsed.dates.length) {
+      document.getElementById('target-date').value = parsed.dates[parsed.dates.length - 1];
+    }
+  } catch (e) {
+    alert('Failed to parse CSV: ' + e.message);
+  }
+});
+
+document.getElementById('run-flow2').addEventListener('click', async () => {
+  if (!parsedCSV) return;
+  const date = document.getElementById('target-date').value.trim();
+  if (!date) {
+    alert('Please enter a target date.');
+    return;
+  }
+
+  const config = parsedCSV.areas.map(a => {
+    const cap = parseFloat(document.getElementById(`cap-${a}`).value);
+    const w   = parseFloat(document.getElementById(`w-${a}`).value);
+    const p   = document.getElementById(`p-${a}`).checked ? 1 : 0;
+    return { area_id: a, capacity_mw: cap, economic_weight: w, priority_flag: p };
+  });
+
+  console.log('Sending config:', config);
+
+  const btn = document.getElementById('run-flow2');
+  const loading = document.getElementById('flow2-loading');
+  const results = document.getElementById('flow2-results');
+
+  btn.disabled = true;
+  loading.classList.add('visible');
+  results.classList.remove('visible');
+  results.innerHTML = '';
+
+  try {
+    const res = await fetch('/api/run-flow2', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        date: date,
+        csv_text: parsedCSV.raw,
+        default_area: parsedCSV.defaultArea,
+        config: config
+      })
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error('Server error ' + res.status + ': ' + errText);
+    }
+    const data = await res.json();
+    renderResults(data, results, 'Hybrid + Lite Forecast');
+  } catch (e) {
+    results.innerHTML = `<div class="error">Failed: ${e.message}</div>`;
+    results.classList.add('visible');
+  } finally {
+    btn.disabled = false;
+    loading.classList.remove('visible');
+  }
+});
+
+function parseCSV(text, filename) {
+  const rawLines = text.split(/\r?\n/);
+  const lines = rawLines.filter(l => l.trim().length > 0);
+  if (lines.length < 2) throw new Error('CSV is empty');
+
+  const headerLine = lines[0];
+  const delim = headerLine.includes('\t') ? '\t' : ',';
+  const headerCols = headerLine.split(delim).length;
+  const isTwoCol = (headerCols === 2);
+
+  const cleanName = (filename || 'Area1')
+    .replace(/_hourly\.csv$/i, '')
+    .replace(/\.(csv|tsv|txt)$/i, '')
+    .replace(/[^a-zA-Z0-9]/g, '');
+  const defaultArea = cleanName || 'Area1';
+
+  const areaSet = new Set();
+  const dateSet = new Set();
+  const maxDemand = {};
+  let row_count = 0;
+
+  for (let i = 1; i < lines.length; i++) {
+    const parts = lines[i].split(delim).map(s => s.trim());
+    let area, dt, mw;
+    if (isTwoCol) {
+      if (parts.length < 2) continue;
+      area = defaultArea; dt = parts[0]; mw = parseFloat(parts[1]);
+    } else {
+      if (parts.length < 3) continue;
+      area = parts[0]; dt = parts[1]; mw = parseFloat(parts[2]);
+    }
+    if (!isFinite(mw)) continue;
+    areaSet.add(area);
+    row_count++;
+
+    const dateOnly = dt.split(' ')[0];
+    if (dateOnly) {
+      let normalized = dateOnly;
+      if (dateOnly.includes('/')) {
+        const [m, d, y] = dateOnly.split('/');
+        normalized = `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+      }
+      dateSet.add(normalized);
+    }
+    if (!(area in maxDemand) || mw > maxDemand[area]) maxDemand[area] = mw;
+  }
+
+  if (areaSet.size === 0) throw new Error('No valid data rows found');
+
+  return {
+    areas: Array.from(areaSet).sort(),
+    dates: Array.from(dateSet).sort(),
+    max_demand_per_area: maxDemand,
+    raw: text, isTwoCol, defaultArea, row_count
+  };
+}
+
+function renderConfigTable(parsed) {
+  let html = `
+    <table class="config-table">
+      <thead><tr><th>Area</th><th>Capacity (MW)</th><th>Economic Weight (0–1)</th><th>Priority</th></tr></thead>
+      <tbody>`;
+  for (const a of parsed.areas) {
+    const cap = Math.round(parsed.max_demand_per_area[a] * 0.50); // P50: forces cuts on peak hours
+    html += `
+      <tr>
+        <td><strong>${a}</strong></td>
+        <td><input type="number" id="cap-${a}" value="${cap}" min="1"></td>
+        <td><input type="number" id="w-${a}" value="0.5" min="0" max="1" step="0.1"></td>
+        <td style="text-align:center;"><input type="checkbox" id="p-${a}"></td>
+      </tr>`;
+  }
+  html += '</tbody></table>';
+  document.getElementById('config-table-wrapper').innerHTML = html;
+}
+
+function renderResults(data, container, modeLabel) {
+  if (data.error) {
+    container.innerHTML = `<div class="error">${data.error}</div>`;
+    container.classList.add('visible');
+    return;
+  }
+
+  const status = (data.capacity_overage < 0.5 && data.priority_violations === 0) ? 'OK' : 'FAILED';
+  const statusClass = status === 'OK' ? 'success' : 'danger';
+
+  let extraInfo = '';
+  if (data.history_days !== undefined) {
+    extraInfo = `<p style="color:var(--text-muted); font-size:12px; margin-top:8px;">
+      Forecast built from ${data.history_days} days of history (${data.history_points} hourly points).
+    </p>`;
+  }
+
+  let html = `
+    <div class="card">
+      <h2>Result for ${data.date} — ${modeLabel}</h2>
+      <div class="metric-row">
+        <div class="metric ${statusClass}"><div class="metric-label">Status</div><div class="metric-value">${status}</div></div>
+        <div class="metric"><div class="metric-label">Fitness</div><div class="metric-value">${Math.round(data.fitness).toLocaleString()}</div></div>
+        <div class="metric"><div class="metric-label">Damage</div><div class="metric-value">${Math.round(data.damage).toLocaleString()}</div></div>
+        <div class="metric ${data.capacity_overage > 0 ? 'danger' : 'success'}"><div class="metric-label">Capacity Overage (MW)</div><div class="metric-value">${Math.round(data.capacity_overage)}</div></div>
+        <div class="metric"><div class="metric-label">Priority Violations</div><div class="metric-value">${data.priority_violations}</div></div>
+      </div>
+      ${renderGrid(data)}
+      <div class="legend">
+        <span><span class="legend-box legend-kept"></span>Power kept on</span>
+        <span><span class="legend-box legend-cut"></span>Cut (load shed)</span>
+      </div>
+      ${extraInfo}
+    </div>`;
+  container.innerHTML = html;
+  container.classList.add('visible');
+}
+
+function renderGrid(data) {
+  const areas = data.areas;
+  const sched = data.schedule;
+  let head = '<th>Area</th>';
+  for (let h = 0; h < 24; h++) head += `<th>${h}</th>`;
+  let body = '';
+  for (let i = 0; i < areas.length; i++) {
+    body += `<tr><td class="area-name">${areas[i]}</td>`;
+    for (let h = 0; h < 24; h++) {
+      const cls = sched[i][h] === 1 ? 'cut' : 'kept';
+      const sym = sched[i][h] === 1 ? 'X' : '·';
+      body += `<td class="${cls}">${sym}</td>`;
+    }
+    body += '</tr>';
+  }
+  return `<div class="grid-wrapper"><table class="schedule"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+}
+</script>
+</body>
+</html>
